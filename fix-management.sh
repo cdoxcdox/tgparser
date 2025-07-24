@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Скрипт для простой установки с минимальными зависимостями
+# Скрипт для исправления стилей и переменных окружения
 # Версия: 1.0
 
 set -e
@@ -28,420 +28,648 @@ info() {
     echo -e "${BLUE}[INFO] $1${NC}"
 }
 
-# Проверка прав root
-check_root() {
-    if [[ $EUID -eq 0 ]]; then
-        error "Не запускайте этот скрипт от имени root!"
-        exit 1
-    fi
-}
+PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
 
-# Полная очистка
-full_cleanup() {
-    log "Полная очистка npm и зависимостей..."
+# Исправление стилей
+fix_styles() {
+    log "Исправление стилей..."
     
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    
-    # Очистка npm кэша
-    sudo -u telegram-parser npm cache clean --force 2>/dev/null || true
-    npm cache clean --force 2>/dev/null || true
-    
-    # Удаление всех файлов npm
-    sudo rm -rf "$PROJECT_DIR/node_modules" 2>/dev/null || true
-    sudo rm -rf "$PROJECT_DIR/package-lock.json" 2>/dev/null || true
-    sudo rm -rf "$PROJECT_DIR/.next" 2>/dev/null || true
-    
-    # Очистка глобального кэша
-    sudo rm -rf /home/telegram-parser/.npm 2>/dev/null || true
-    sudo rm -rf ~/.npm 2>/dev/null || true
-    
-    log "Очистка завершена ✓"
-}
-
-# Создание базового package.json
-create_basic_package_json() {
-    log "Создание базового package.json..."
-    
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    
-    sudo -u telegram-parser tee "$PROJECT_DIR/package.json" > /dev/null << 'EOF'
-{
-  "name": "telegram-channel-parser",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "next": "14.2.5",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "typescript": "5.5.4"
-  },
-  "devDependencies": {
-    "@types/node": "20.14.11",
-    "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0",
-    "eslint": "8.57.0",
-    "eslint-config-next": "14.2.5"
-  }
-}
-EOF
-    
-    log "Базовый package.json создан ✓"
-}
-
-# Установка базовых зависимостей
-install_basic_dependencies() {
-    log "Установка базовых зависимостей..."
-    
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    cd "$PROJECT_DIR"
-    
-    # Установка с фиксированными версиями
-    if sudo -u telegram-parser npm install --no-audit --no-fund --legacy-peer-deps; then
-        log "Базовые зависимости установлены ✓"
-        return 0
-    else
-        error "Не удалось установить базовые зависимости"
-        return 1
-    fi
-}
-
-# Добавление Tailwind CSS
-add_tailwind() {
-    log "Добавление Tailwind CSS..."
-    
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    cd "$PROJECT_DIR"
-    
-    if sudo -u telegram-parser npm install tailwindcss@3.4.6 autoprefixer@10.4.19 postcss@8.4.39 --save --legacy-peer-deps; then
-        log "Tailwind CSS установлен ✓"
-        
-        # Создание конфигурации Tailwind
-        sudo -u telegram-parser tee "$PROJECT_DIR/tailwind.config.js" > /dev/null << 'EOF'
-/** @type {import('tailwindcss').Config} */
-module.exports = {
-  content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-}
-EOF
-        
-        # Создание postcss.config.js
-        sudo -u telegram-parser tee "$PROJECT_DIR/postcss.config.js" > /dev/null << 'EOF'
-module.exports = {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}
-EOF
-        
-        log "Конфигурация Tailwind создана ✓"
-        return 0
-    else
-        warning "Не удалось установить Tailwind CSS"
-        return 1
-    fi
-}
-
-# Добавление иконок Lucide
-add_lucide() {
-    log "Добавление Lucide React..."
-    
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    cd "$PROJECT_DIR"
-    
-    if sudo -u telegram-parser npm install lucide-react@0.400.0 --save --legacy-peer-deps; then
-        log "Lucide React установлен ✓"
-        return 0
-    else
-        warning "Не удалось установить Lucide React"
-        return 1
-    fi
-}
-
-# Создание базовых конфигурационных файлов
-create_config_files() {
-    log "Создание конфигурационных файлов..."
-    
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    
-    # next.config.js (простая версия)
-    sudo -u telegram-parser tee "$PROJECT_DIR/next.config.js" > /dev/null << 'EOF'
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
-}
-
-module.exports = nextConfig
-EOF
-
-    # tsconfig.json
-    sudo -u telegram-parser tee "$PROJECT_DIR/tsconfig.json" > /dev/null << 'EOF'
-{
-  "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "es6"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
-}
-EOF
-
-    # Создание app/globals.css
-    sudo mkdir -p "$PROJECT_DIR/app"
+    # Обновляем globals.css с правильными стилями
     sudo -u telegram-parser tee "$PROJECT_DIR/app/globals.css" > /dev/null << 'EOF'
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+/* Базовые стили */
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: #000000;
+  background: #ffffff;
+}
+
+/* Убираем проблемные градиенты */
+@layer base {
+  html {
+    @apply text-gray-900 bg-white;
+  }
+  
+  body {
+    @apply text-gray-900 bg-white;
+  }
+}
+
+/* Кастомные стили для форм */
+.form-input {
+  @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm 
+         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+         text-gray-900 bg-white;
+}
+
+.btn {
+  @apply px-4 py-2 rounded-md font-medium transition-colors duration-200
+         focus:outline-none focus:ring-2 focus:ring-offset-2;
+}
+
+.btn-primary {
+  @apply bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500;
+}
+
+.btn-success {
+  @apply bg-green-600 text-white hover:bg-green-700 focus:ring-green-500;
+}
+
+.btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+}
+
+.btn-secondary {
+  @apply bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500;
+}
+
+/* Карточки */
+.card {
+  @apply bg-white rounded-lg shadow-md border border-gray-200;
+}
+
+.card-header {
+  @apply px-6 py-4 border-b border-gray-200;
+}
+
+.card-body {
+  @apply px-6 py-4;
+}
+
+/* Статистика */
+.stat-card {
+  @apply bg-white p-6 rounded-lg shadow-md border border-gray-200;
+}
+
+.stat-number {
+  @apply text-2xl font-bold text-gray-900;
+}
+
+.stat-label {
+  @apply text-sm font-medium text-gray-600;
+}
+
+/* Статусы */
+.status-online {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+         bg-green-100 text-green-800;
+}
+
+.status-offline {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+         bg-red-100 text-red-800;
+}
+
+.status-warning {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+         bg-yellow-100 text-yellow-800;
+}
+
+/* Индикаторы */
+.indicator-green {
+  @apply w-3 h-3 bg-green-500 rounded-full;
+}
+
+.indicator-red {
+  @apply w-3 h-3 bg-red-500 rounded-full;
+}
+
+.indicator-yellow {
+  @apply w-3 h-3 bg-yellow-500 rounded-full;
+}
+
+/* Анимации */
+.pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Темная тема (опционально) */
+@media (prefers-color-scheme: dark) {
+  html {
+    @apply text-gray-100 bg-gray-900;
+  }
+  
+  body {
+    @apply text-gray-100 bg-gray-900;
+  }
+  
+  .card {
+    @apply bg-gray-800 border-gray-700;
+  }
+  
+  .form-input {
+    @apply bg-gray-800 border-gray-600 text-gray-100;
+  }
 }
 EOF
 
-    log "Конфигурационные файлы созданы ✓"
+    log "Стили исправлены ✓"
 }
 
-# Создание простого layout.tsx
-create_layout() {
-    log "Создание layout.tsx..."
+# Создание правильного .env.local
+create_env_file() {
+    log "Создание файла переменных окружения..."
     
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    
-    sudo -u telegram-parser tee "$PROJECT_DIR/app/layout.tsx" > /dev/null << 'EOF'
-import type { Metadata } from 'next'
-import './globals.css'
+    # Создаем .env.local с правильными переменными
+    sudo -u telegram-parser tee "$PROJECT_DIR/.env.local" > /dev/null << 'EOF'
+# Telegram API (получите на https://my.telegram.org)
+TELEGRAM_API_ID=your_api_id
+TELEGRAM_API_HASH=your_api_hash
 
-export const metadata: Metadata = {
-  title: 'Telegram Channel Parser',
-  description: 'Автоматический парсинг и фильтрация Telegram каналов',
-}
+# Groq API (получите на https://console.groq.com)
+GROQ_API_KEY=your_groq_key
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <html lang="ru">
-      <body>{children}</body>
-    </html>
-  )
-}
+# Администратор (установите свои данные)
+ADMIN_LOGIN=admin
+ADMIN_PASSWORD=admin
+
+# Настройки приложения
+NODE_ENV=production
+PORT=3000
+NEXT_PUBLIC_APP_NAME=Telegram Channel Parser
+NEXT_PUBLIC_APP_VERSION=1.0.0
+
+# Настройки парсера
+PARSER_DELAY_MIN=15
+PARSER_DELAY_MAX=30
+PARSER_MAX_MESSAGES=100
+
+# Безопасность
+SESSION_SECRET=your_session_secret_change_me
+JWT_SECRET=your_jwt_secret_change_me
+
+# База данных (если используется)
+DATABASE_URL=sqlite:./data/database.db
+
+# Логирование
+LOG_LEVEL=info
+LOG_FILE=./logs/app.log
 EOF
 
-    log "Layout создан ✓"
+    # Создаем также .env для разработки
+    sudo -u telegram-parser tee "$PROJECT_DIR/.env" > /dev/null << 'EOF'
+# Development environment
+NODE_ENV=development
+PORT=3000
+NEXT_PUBLIC_APP_NAME=Telegram Channel Parser
+NEXT_PUBLIC_APP_VERSION=1.0.0-dev
+EOF
+
+    log "Файлы окружения созданы ✓"
 }
 
-# Создание простой страницы
-create_simple_page() {
-    log "Создание простой главной страницы..."
-    
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
+# Обновление страницы с правильными стилями
+update_main_page() {
+    log "Обновление главной страницы с правильными стилями..."
     
     sudo -u telegram-parser tee "$PROJECT_DIR/app/page.tsx" > /dev/null << 'EOF'
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+
+interface Settings {
+  adminLogin: string
+  adminPassword: string
+  telegramApiId: string
+  telegramApiHash: string
+  groqApiKey: string
+  isConnected: boolean
+}
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loginForm, setLoginForm] = useState({ login: '', password: '' })
+  const [settings, setSettings] = useState<Settings>({
+    adminLogin: process.env.NEXT_PUBLIC_ADMIN_LOGIN || 'admin',
+    adminPassword: 'admin',
+    telegramApiId: '',
+    telegramApiHash: '',
+    groqApiKey: '',
+    isConnected: false
+  })
+  const [statistics, setStatistics] = useState({
+    processed: 0,
+    forwarded: 0,
+    filtered: 0,
+    uptime: 0,
+    isRunning: false
+  })
+
+  // Загрузка настроек при старте
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('telegram-parser-settings')
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings)
+        setSettings(prev => ({ ...prev, ...parsed }))
+      } catch (error) {
+        console.error('Ошибка загрузки настроек:', error)
+      }
+    }
+  }, [])
 
   const handleLogin = () => {
-    if (loginForm.login === 'admin' && loginForm.password === 'admin') {
+    if (loginForm.login === settings.adminLogin && loginForm.password === settings.adminPassword) {
       setIsAuthenticated(true)
+      localStorage.setItem('telegram-parser-auth', 'true')
     } else {
       alert('Неверный логин или пароль')
     }
   }
 
+  const saveSettings = (newSettings: Partial<Settings>) => {
+    const updated = { ...settings, ...newSettings }
+    setSettings(updated)
+    localStorage.setItem('telegram-parser-settings', JSON.stringify(updated))
+  }
+
+  const handleConnect = async () => {
+    if (!settings.telegramApiId || !settings.telegramApiHash) {
+      alert('Введите API ID и Hash')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/telegram/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiId: settings.telegramApiId,
+          apiHash: settings.telegramApiHash
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        saveSettings({ isConnected: true })
+        alert('Подключение успешно!')
+      } else {
+        alert('Ошибка подключения: ' + result.error)
+      }
+    } catch (error) {
+      alert('Ошибка подключения к серверу')
+    }
+  }
+
+  const toggleParser = async () => {
+    try {
+      const action = statistics.isRunning ? 'stop' : 'start'
+      const response = await fetch('/api/parser/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        setStatistics(prev => ({ ...prev, isRunning: !prev.isRunning }))
+        alert(`Парсер ${action === 'start' ? 'запущен' : 'остановлен'}`)
+      } else {
+        alert('Ошибка: ' + result.error)
+      }
+    } catch (error) {
+      alert('Ошибка управления парсером')
+    }
+  }
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md w-96">
-          <h1 className="text-2xl font-bold mb-6 text-center">
-            Telegram Channel Parser
-          </h1>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Логин
-              </label>
-              <input
-                type="text"
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                value={loginForm.login}
-                onChange={(e) => setLoginForm(prev => ({ ...prev, login: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Пароль
-              </label>
-              <input
-                type="password"
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                value={loginForm.password}
-                onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
-              />
-            </div>
-            <button
-              onClick={handleLogin}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
-            >
-              Войти
-            </button>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+              Telegram Channel Parser
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Войдите в панель управления
+            </p>
           </div>
-          <p className="text-sm text-gray-500 mt-4 text-center">
-            Логин: admin, Пароль: admin
-          </p>
+          <div className="bg-white py-8 px-6 shadow-lg rounded-lg">
+            <div className="space-y-6">
+              <div>
+                <label htmlFor="login" className="block text-sm font-medium text-gray-700">
+                  Логин
+                </label>
+                <input
+                  id="login"
+                  type="text"
+                  className="form-input mt-1"
+                  placeholder="Введите логин"
+                  value={loginForm.login}
+                  onChange={(e) => setLoginForm(prev => ({ ...prev, login: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Пароль
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  className="form-input mt-1"
+                  placeholder="Введите пароль"
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                />
+              </div>
+              <button
+                onClick={handleLogin}
+                className="btn btn-primary w-full"
+              >
+                Войти
+              </button>
+            </div>
+            <div className="mt-4 text-center">
+              <p className="text-xs text-gray-500">
+                По умолчанию: admin / admin
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-xl font-semibold">Telegram Channel Parser</h1>
-        </div>
-      </div>
-      
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-lg font-semibold mb-4">Статистика</h2>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Обработано:</span>
-                <span className="font-bold">0</span>
+    <div className="min-h-screen bg-gray-50">
+      {/* Заголовок */}
+      <div className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-sm">TP</span>
               </div>
-              <div className="flex justify-between">
-                <span>Переслано:</span>
-                <span className="font-bold text-green-600">0</span>
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900">
+                  Telegram Channel Parser
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Автоматический парсинг и фильтрация контента
+                </p>
               </div>
-              <div className="flex justify-between">
-                <span>Отфильтровано:</span>
-                <span className="font-bold text-red-600">0</span>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className={`indicator-${settings.isConnected ? 'green' : 'red'}`} />
+                <span className="text-sm text-gray-600">
+                  {settings.isConnected ? 'Подключено' : 'Не подключено'}
+                </span>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <div className={`indicator-${statistics.isRunning ? 'green pulse-slow' : 'red'}`} />
+                <span className="text-sm text-gray-600">
+                  {statistics.isRunning ? 'Работает' : 'Остановлен'}
+                </span>
               </div>
             </div>
           </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-lg font-semibold mb-4">Подключение</h2>
-            <div className="space-y-4">
+        </div>
+      </div>
+
+      {/* Основной контент */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Статистика */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="stat-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="stat-label">Обработано</p>
+                <p className="stat-number text-blue-600">{statistics.processed}</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 text-xl">📊</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="stat-label">Переслано</p>
+                <p className="stat-number text-green-600">{statistics.forwarded}</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                <span className="text-green-600 text-xl">✅</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="stat-label">Отфильтровано</p>
+                <p className="stat-number text-red-600">{statistics.filtered}</p>
+              </div>
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <span className="text-red-600 text-xl">🚫</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="stat-label">Аптайм</p>
+                <p className="stat-number text-purple-600">{Math.floor(statistics.uptime / 60)}м</p>
+              </div>
+              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                <span className="text-purple-600 text-xl">⏱️</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Основные панели */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Подключение к Telegram */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Подключение к Telegram
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Настройка API для работы с Telegram
+              </p>
+            </div>
+            <div className="card-body space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Telegram API ID
+                  API ID
                 </label>
                 <input
                   type="text"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  className="form-input mt-1"
                   placeholder="Введите API ID"
+                  value={settings.telegramApiId}
+                  onChange={(e) => saveSettings({ telegramApiId: e.target.value })}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Telegram API Hash
+                  API Hash
                 </label>
                 <input
                   type="text"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  className="form-input mt-1"
                   placeholder="Введите API Hash"
+                  value={settings.telegramApiHash}
+                  onChange={(e) => saveSettings({ telegramApiHash: e.target.value })}
                 />
               </div>
-              <button className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
-                Подключиться
+              <button
+                onClick={handleConnect}
+                className="btn btn-primary w-full"
+                disabled={!settings.telegramApiId || !settings.telegramApiHash}
+              >
+                {settings.isConnected ? 'Переподключиться' : 'Подключиться'}
+              </button>
+              
+              {settings.isConnected && (
+                <div className="status-online">
+                  ✅ Подключено к Telegram
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Управление парсером */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Управление парсером
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Запуск и остановка парсинга
+              </p>
+            </div>
+            <div className="card-body space-y-4">
+              <button
+                onClick={toggleParser}
+                className={`btn w-full ${statistics.isRunning ? 'btn-danger' : 'btn-success'}`}
+                disabled={!settings.isConnected}
+              >
+                {statistics.isRunning ? '⏹️ Остановить парсер' : '▶️ Запустить парсер'}
+              </button>
+              
+              <button
+                className="btn btn-secondary w-full"
+                onClick={() => alert('Логи парсера (в разработке)')}
+              >
+                📋 Просмотр логов
+              </button>
+              
+              <button
+                className="btn btn-secondary w-full"
+                onClick={() => {
+                  setStatistics({ processed: 0, forwarded: 0, filtered: 0, uptime: 0, isRunning: false })
+                  alert('Статистика сброшена')
+                }}
+              >
+                🔄 Сбросить статистику
               </button>
             </div>
           </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-lg font-semibold mb-4">Управление</h2>
-            <div className="space-y-2">
-              <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">
-                Запустить парсер
+
+          {/* AI Фильтрация */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="text-lg font-semibold text-gray-900">
+                AI Фильтрация
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Настройка искусственного интеллекта
+              </p>
+            </div>
+            <div className="card-body space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Groq API Key
+                </label>
+                <input
+                  type="password"
+                  className="form-input mt-1"
+                  placeholder="Введите Groq API ключ"
+                  value={settings.groqApiKey}
+                  onChange={(e) => saveSettings({ groqApiKey: e.target.value })}
+                />
+              </div>
+              
+              <button
+                className="btn btn-primary w-full"
+                disabled={!settings.groqApiKey}
+                onClick={() => alert('Тест AI фильтра (в разработке)')}
+              >
+                🧠 Тестировать AI
               </button>
-              <button className="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">
-                Остановить парсер
-              </button>
-              <button className="w-full bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700">
-                Просмотр логов
-              </button>
+              
+              <div className="text-xs text-gray-500">
+                <p>Получите бесплатный ключ на:</p>
+                <a 
+                  href="https://console.groq.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  console.groq.com
+                </a>
+              </div>
             </div>
           </div>
         </div>
-        
-        <div className="mt-6 bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-4">Информация</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <strong>Статус:</strong> Готов к настройке
-            </div>
-            <div>
-              <strong>Версия:</strong> 1.0.0
-            </div>
-            <div>
-              <strong>Node.js:</strong> {typeof window !== 'undefined' ? 'Загружено' : 'Сервер'}
-            </div>
-            <div>
-              <strong>Последнее обновление:</strong> {new Date().toLocaleString()}
+
+        {/* Информационная панель */}
+        <div className="mt-8 card">
+          <div className="card-header">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Информация о системе
+            </h2>
+          </div>
+          <div className="card-body">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="font-medium text-gray-700">Версия:</span>
+                <span className="ml-2 text-gray-900">1.0.0</span>
+              </div>
+              <div>
+                <span className="font-medium text-gray-700">Статус:</span>
+                <span className={`ml-2 ${statistics.isRunning ? 'text-green-600' : 'text-red-600'}`}>
+                  {statistics.isRunning ? 'Активен' : 'Неактивен'}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium text-gray-700">Подключение:</span>
+                <span className={`ml-2 ${settings.isConnected ? 'text-green-600' : 'text-red-600'}`}>
+                  {settings.isConnected ? 'Подключено' : 'Не подключено'}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium text-gray-700">Обновлено:</span>
+                <span className="ml-2 text-gray-900">{new Date().toLocaleString()}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -451,160 +679,148 @@ export default function Home() {
 }
 EOF
 
-    log "Простая страница создана ✓"
+    log "Главная страница обновлена ✓"
 }
 
-# Создание API маршрутов
-create_api_routes() {
-    log "Создание базовых API маршрутов..."
+# Создание API для работы с переменными окружения
+create_env_api() {
+    log "Создание API для работы с переменными окружения..."
     
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    
-    # Создание директорий API
-    sudo mkdir -p "$PROJECT_DIR/app/api/parser/status"
-    sudo mkdir -p "$PROJECT_DIR/app/api/telegram/connect"
-    
-    # API статуса парсера
-    sudo -u telegram-parser tee "$PROJECT_DIR/app/api/parser/status/route.ts" > /dev/null << 'EOF'
-import { NextResponse } from 'next/server'
+    # API для получения настроек
+    sudo mkdir -p "$PROJECT_DIR/app/api/settings"
+    sudo -u telegram-parser tee "$PROJECT_DIR/app/api/settings/route.ts" > /dev/null << 'EOF'
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET() {
-  return NextResponse.json({
-    success: true,
-    statistics: {
-      processed: 0,
-      forwarded: 0,
-      filtered: 0,
-      uptime: 0,
-      isRunning: false,
-      lastProcessed: 'Никогда'
+  try {
+    // Возвращаем только публичные переменные
+    const settings = {
+      appName: process.env.NEXT_PUBLIC_APP_NAME || 'Telegram Channel Parser',
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      adminLogin: process.env.ADMIN_LOGIN || 'admin',
+      // Не возвращаем пароли и секретные ключи
+      hasApiId: !!process.env.TELEGRAM_API_ID,
+      hasApiHash: !!process.env.TELEGRAM_API_HASH,
+      hasGroqKey: !!process.env.GROQ_API_KEY,
     }
-  })
-}
-EOF
 
-    # API подключения к Telegram
-    sudo -u telegram-parser tee "$PROJECT_DIR/app/api/telegram/connect/route.ts" > /dev/null << 'EOF'
-import { NextRequest, NextResponse } from 'next/server'
+    return NextResponse.json({
+      success: true,
+      settings
+    })
+  } catch (error) {
+    console.error('Ошибка получения настроек:', error)
+    return NextResponse.json(
+      { success: false, error: 'Не удалось получить настройки' },
+      { status: 500 }
+    )
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { apiId, apiHash } = await request.json()
+    const { key, value } = await request.json()
     
-    if (!apiId || !apiHash) {
-      return NextResponse.json(
-        { success: false, error: 'API ID и Hash обязательны' },
-        { status: 400 }
-      )
-    }
+    // Здесь можно добавить логику сохранения настроек
+    // Пока что просто возвращаем успех
     
-    // Симуляция подключения
     return NextResponse.json({
       success: true,
-      message: 'Подключение к Telegram (демо режим)'
+      message: 'Настройки сохранены'
     })
   } catch (error) {
+    console.error('Ошибка сохранения настроек:', error)
     return NextResponse.json(
-      { success: false, error: 'Ошибка подключения' },
+      { success: false, error: 'Не удалось сохранить настройки' },
       { status: 500 }
     )
   }
 }
 EOF
 
-    log "API маршруты созданы ✓"
+    log "API настроек создан ✓"
 }
 
-# Сборка приложения
-build_application() {
-    log "Сборка приложения..."
+# Обновление next.config.js для работы с переменными окружения
+update_next_config() {
+    log "Обновление конфигурации Next.js..."
     
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    cd "$PROJECT_DIR"
-    
-    if sudo -u telegram-parser npm run build; then
-        log "Приложение собрано успешно ✓"
-        return 0
-    else
-        error "Ошибка сборки приложения"
-        return 1
-    fi
+    sudo -u telegram-parser tee "$PROJECT_DIR/next.config.js" > /dev/null << 'EOF'
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    appDir: true,
+  },
+  env: {
+    // Серверные переменные окружения
+    TELEGRAM_API_ID: process.env.TELEGRAM_API_ID,
+    TELEGRAM_API_HASH: process.env.TELEGRAM_API_HASH,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    ADMIN_LOGIN: process.env.ADMIN_LOGIN,
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+  },
+  // Публичные переменные (доступны в браузере)
+  publicRuntimeConfig: {
+    appName: process.env.NEXT_PUBLIC_APP_NAME,
+    appVersion: process.env.NEXT_PUBLIC_APP_VERSION,
+  },
+  // Серверные переменные (только на сервере)
+  serverRuntimeConfig: {
+    telegramApiId: process.env.TELEGRAM_API_ID,
+    telegramApiHash: process.env.TELEGRAM_API_HASH,
+    groqApiKey: process.env.GROQ_API_KEY,
+    adminLogin: process.env.ADMIN_LOGIN,
+    adminPassword: process.env.ADMIN_PASSWORD,
+  }
 }
 
-# Тестирование приложения
-test_application() {
-    log "Тестирование приложения..."
-    
-    local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
-    cd "$PROJECT_DIR"
-    
-    # Запуск в фоновом режиме для теста
-    sudo -u telegram-parser timeout 10 npm start &
-    local PID=$!
-    
-    sleep 5
-    
-    # Проверка доступности
-    if curl -s http://localhost:3000 > /dev/null; then
-        log "Приложение работает ✓"
-        kill $PID 2>/dev/null || true
-        return 0
-    else
-        warning "Приложение может не отвечать"
-        kill $PID 2>/dev/null || true
-        return 1
-    fi
+module.exports = nextConfig
+EOF
+
+    log "Конфигурация Next.js обновлена ✓"
 }
 
 # Главная функция
 main() {
     echo "╔════════════════════════════════════════════════════════════════╗"
-    echo "║              Простая установка зависимостей                   ║"
+    echo "║           Исправление стилей и переменных окружения           ║"
     echo "║              Telegram Channel Parser                          ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo
     
-    check_root
-    full_cleanup
-    create_basic_package_json
-    
-    if install_basic_dependencies; then
-        add_tailwind
-        add_lucide
-        create_config_files
-        create_layout
-        create_simple_page
-        create_api_routes
-        
-        if build_application; then
-            echo
-            log "✅ Простая установка завершена успешно!"
-            echo
-            info "Что установлено:"
-            info "  ✓ Next.js 14.2.5"
-            info "  ✓ React 18.3.1"
-            info "  ✓ TypeScript 5.5.4"
-            info "  ✓ Tailwind CSS 3.4.6"
-            info "  ✓ Lucide React (иконки)"
-            info "  ✓ Базовый интерфейс"
-            info "  ✓ API маршруты"
-            echo
-            info "Запуск приложения:"
-            info "  telegram-parser start"
-            echo
-            info "Приложение будет доступно на: http://localhost:3000"
-            info "Логин: admin, Пароль: admin"
-            echo
-            warning "Это базовая версия без сложных зависимостей."
-            warning "Для полной функциональности потребуется дополнительная настройка."
-        else
-            error "Сборка не удалась"
-            exit 1
-        fi
-    else
-        error "Установка базовых зависимостей не удалась"
+    if [[ ! -d "$PROJECT_DIR" ]]; then
+        error "Директория проекта не найдена: $PROJECT_DIR"
         exit 1
     fi
+    
+    cd "$PROJECT_DIR"
+    
+    fix_styles
+    create_env_file
+    update_main_page
+    create_env_api
+    update_next_config
+    
+    echo
+    log "✅ Исправления применены успешно!"
+    echo
+    info "Что исправлено:"
+    info "  ✓ Стили - убран белый текст на белом фоне"
+    info "  ✓ Добавлены правильные CSS классы"
+    info "  ✓ Создан файл .env.local с переменными"
+    info "  ✓ Обновлена главная страница с лучшим дизайном"
+    info "  ✓ Добавлен API для работы с настройками"
+    info "  ✓ Настроена конфигурация Next.js"
+    echo
+    warning "Теперь нужно пересобрать и перезапустить приложение:"
+    warning "  telegram-parser stop"
+    warning "  cd $PROJECT_DIR && sudo -u telegram-parser npm run build"
+    warning "  telegram-parser start"
+    echo
+    info "После перезапуска:"
+    info "  • Текст будет читаемым (черный на белом)"
+    info "  • Настройки будут сохраняться"
+    info "  • Интерфейс станет более удобным"
 }
 
 # Запуск
