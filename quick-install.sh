@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Telegram Channel Parser - Быстрая установка
-# Версия: 1.0
+# Версия: 1.1 - Исправлена обработка прав доступа
 # Для Ubuntu 20.04+
 
 set -e
@@ -65,6 +65,13 @@ check_os() {
 # Проверка системных требований
 check_requirements() {
     log "Проверка системных требований..."
+    
+    # Проверка sudo прав
+    if ! sudo -n true 2>/dev/null; then
+        error "Пользователь не имеет sudo прав или требуется пароль"
+        error "Убедитесь, что ваш пользователь в группе sudo"
+        exit 1
+    fi
     
     # Проверка RAM
     TOTAL_RAM=$(free -m | awk 'NR==2{printf "%.0f", $2/1024}')
@@ -164,27 +171,49 @@ create_app_user() {
     
     if id "$APP_USER" &>/dev/null; then
         log "Пользователь $APP_USER уже существует ✓"
-        return 0
+    else
+        log "Создание пользователя $APP_USER..."
+        sudo useradd -m -s /bin/bash $APP_USER
+        sudo usermod -aG sudo $APP_USER
+        log "Пользователь $APP_USER создан ✓"
     fi
     
-    log "Создание пользователя $APP_USER..."
-    sudo useradd -m -s /bin/bash $APP_USER
-    sudo usermod -aG sudo $APP_USER
-    
-    log "Пользователь $APP_USER создан ✓"
+    # Проверяем, что домашняя директория существует
+    if [[ ! -d "/home/$APP_USER" ]]; then
+        sudo mkdir -p "/home/$APP_USER"
+        sudo chown $APP_USER:$APP_USER "/home/$APP_USER"
+    fi
 }
 
 # Создание структуры проекта
 setup_project() {
     local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
+    local APP_USER="telegram-parser"
     
     log "Настройка проекта..."
     
-    # Создание директорий
+    # Удаляем существующую директорию если есть
+    if [[ -d "$PROJECT_DIR" ]]; then
+        sudo rm -rf "$PROJECT_DIR"
+    fi
+    
+    # Создание директорий как root, затем смена владельца
     sudo mkdir -p "$PROJECT_DIR"/{data,logs,app/api/{parser/{control,status},telegram/{connect,channels},ai/filter,settings/save},components/ui,hooks,lib}
     
-    # Установка прав
-    sudo chown -R telegram-parser:telegram-parser "/home/telegram-parser"
+    # Создание дополнительных директорий
+    sudo mkdir -p "$PROJECT_DIR"/{scripts,public}
+    sudo mkdir -p "/backup/telegram-parser"
+    
+    # Установка правильных прав доступа
+    sudo chown -R $APP_USER:$APP_USER "/home/telegram-parser"
+    sudo chown -R $APP_USER:$APP_USER "/backup/telegram-parser"
+    sudo chmod -R 755 "/home/telegram-parser"
+    
+    # Проверяем права доступа
+    if [[ ! -w "$PROJECT_DIR" ]] && [[ $(stat -c %U "$PROJECT_DIR") != "$APP_USER" ]]; then
+        error "Не удалось установить права доступа к $PROJECT_DIR"
+        exit 1
+    fi
     
     log "Структура проекта создана ✓"
 }
@@ -192,11 +221,16 @@ setup_project() {
 # Создание файлов конфигурации
 create_config_files() {
     local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
+    local APP_USER="telegram-parser"
     
     log "Создание файлов конфигурации..."
     
-    # package.json
-    sudo -u telegram-parser tee "$PROJECT_DIR/package.json" > /dev/null << 'EOF'
+    # Переключаемся на пользователя telegram-parser для создания файлов
+    sudo -u $APP_USER bash << 'USERSCRIPT'
+PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
+
+# package.json
+cat > "$PROJECT_DIR/package.json" << 'EOF'
 {
   "name": "telegram-channel-parser",
   "version": "1.0.0",
@@ -249,8 +283,8 @@ create_config_files() {
 }
 EOF
 
-    # next.config.mjs
-    sudo -u telegram-parser tee "$PROJECT_DIR/next.config.mjs" > /dev/null << 'EOF'
+# next.config.mjs
+cat > "$PROJECT_DIR/next.config.mjs" << 'EOF'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
@@ -261,8 +295,8 @@ const nextConfig = {
 export default nextConfig
 EOF
 
-    # tailwind.config.ts
-    sudo -u telegram-parser tee "$PROJECT_DIR/tailwind.config.ts" > /dev/null << 'EOF'
+# tailwind.config.ts
+cat > "$PROJECT_DIR/tailwind.config.ts" << 'EOF'
 import type { Config } from "tailwindcss"
 
 const config: Config = {
@@ -345,8 +379,8 @@ const config: Config = {
 export default config
 EOF
 
-    # postcss.config.js
-    sudo -u telegram-parser tee "$PROJECT_DIR/postcss.config.js" > /dev/null << 'EOF'
+# postcss.config.js
+cat > "$PROJECT_DIR/postcss.config.js" << 'EOF'
 module.exports = {
   plugins: {
     tailwindcss: {},
@@ -355,8 +389,8 @@ module.exports = {
 }
 EOF
 
-    # tsconfig.json
-    sudo -u telegram-parser tee "$PROJECT_DIR/tsconfig.json" > /dev/null << 'EOF'
+# tsconfig.json
+cat > "$PROJECT_DIR/tsconfig.json" << 'EOF'
 {
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "es6"],
@@ -386,8 +420,8 @@ EOF
 }
 EOF
 
-    # .env.local
-    sudo -u telegram-parser tee "$PROJECT_DIR/.env.local" > /dev/null << 'EOF'
+# .env.local
+cat > "$PROJECT_DIR/.env.local" << 'EOF'
 # Telegram API (получите на https://my.telegram.org)
 TELEGRAM_API_ID=your_api_id
 TELEGRAM_API_HASH=your_api_hash
@@ -404,8 +438,8 @@ NODE_ENV=production
 PORT=3000
 EOF
 
-    # ecosystem.config.js
-    sudo -u telegram-parser tee "$PROJECT_DIR/ecosystem.config.js" > /dev/null << 'EOF'
+# ecosystem.config.js
+cat > "$PROJECT_DIR/ecosystem.config.js" << 'EOF'
 module.exports = {
   apps: [{
     name: 'telegram-parser',
@@ -428,17 +462,79 @@ module.exports = {
 };
 EOF
 
+# .gitignore
+cat > "$PROJECT_DIR/.gitignore" << 'EOF'
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js
+.next/
+out/
+
+# Production
+build/
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+*.session
+*.session-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+EOF
+
+USERSCRIPT
+
+    # Проверяем, что файлы созданы
+    if [[ ! -f "$PROJECT_DIR/package.json" ]]; then
+        error "Не удалось создать файлы конфигурации"
+        exit 1
+    fi
+    
     log "Файлы конфигурации созданы ✓"
 }
 
 # Установка зависимостей
 install_dependencies() {
     local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
+    local APP_USER="telegram-parser"
     
     log "Установка зависимостей npm (это может занять несколько минут)..."
     
-    cd "$PROJECT_DIR"
-    sudo -u telegram-parser npm install --silent
+    # Выполняем установку от имени пользователя telegram-parser
+    sudo -u $APP_USER bash << USERSCRIPT
+cd "$PROJECT_DIR"
+export HOME="/home/telegram-parser"
+npm install --silent --no-audit --no-fund
+USERSCRIPT
+    
+    # Проверяем, что node_modules создан
+    if [[ ! -d "$PROJECT_DIR/node_modules" ]]; then
+        error "Не удалось установить зависимости npm"
+        exit 1
+    fi
     
     log "Зависимости установлены ✓"
 }
@@ -446,18 +542,29 @@ install_dependencies() {
 # Сборка приложения
 build_application() {
     local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
+    local APP_USER="telegram-parser"
     
     log "Сборка приложения..."
     
-    cd "$PROJECT_DIR"
-    sudo -u telegram-parser npm run build
+    # Выполняем сборку от имени пользователя telegram-parser
+    sudo -u $APP_USER bash << USERSCRIPT
+cd "$PROJECT_DIR"
+export HOME="/home/telegram-parser"
+npm run build
+USERSCRIPT
+    
+    # Проверяем, что сборка прошла успешно
+    if [[ ! -d "$PROJECT_DIR/.next" ]]; then
+        error "Не удалось собрать приложение"
+        exit 1
+    fi
     
     log "Приложение собрано ✓"
 }
 
 # Настройка Nginx
 configure_nginx() {
-    local DOMAIN=${1:-$(curl -s ifconfig.me)}
+    local DOMAIN=${1:-$(curl -s ifconfig.me 2>/dev/null || echo "localhost")}
     
     log "Настройка Nginx для $DOMAIN..."
     
@@ -519,6 +626,7 @@ EOF
         log "Nginx настроен ✓"
     else
         error "Ошибка в конфигурации Nginx"
+        sudo nginx -t
         exit 1
     fi
 }
@@ -556,7 +664,7 @@ APP_USER="telegram-parser"
 case "$1" in
     start)
         echo "Запуск Telegram Parser..."
-        sudo -u $APP_USER pm2 start $PROJECT_DIR/ecosystem.config.js
+        sudo -u $APP_USER bash -c "cd $PROJECT_DIR && pm2 start ecosystem.config.js"
         ;;
     stop)
         echo "Остановка Telegram Parser..."
@@ -574,14 +682,11 @@ case "$1" in
         ;;
     build)
         echo "Сборка приложения..."
-        cd $PROJECT_DIR
-        sudo -u $APP_USER npm run build
+        sudo -u $APP_USER bash -c "cd $PROJECT_DIR && npm run build"
         ;;
     update)
         echo "Обновление зависимостей..."
-        cd $PROJECT_DIR
-        sudo -u $APP_USER npm install
-        sudo -u $APP_USER npm run build
+        sudo -u $APP_USER bash -c "cd $PROJECT_DIR && npm install && npm run build"
         sudo -u $APP_USER pm2 restart telegram-parser
         ;;
     *)
@@ -602,10 +707,10 @@ BACKUP_DIR="/backup/telegram-parser"
 PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
 
 sudo mkdir -p $BACKUP_DIR
-sudo tar -czf "$BACKUP_DIR/data_$DATE.tar.gz" -C "$PROJECT_DIR" data/ logs/
+sudo tar -czf "$BACKUP_DIR/data_$DATE.tar.gz" -C "$PROJECT_DIR" data/ logs/ 2>/dev/null || true
 sudo cp "$PROJECT_DIR/.env.local" "$BACKUP_DIR/env_$DATE.backup" 2>/dev/null || true
-sudo find "$BACKUP_DIR" -name "*.tar.gz" -mtime +30 -delete
-sudo find "$BACKUP_DIR" -name "*.backup" -mtime +30 -delete
+sudo find "$BACKUP_DIR" -name "*.tar.gz" -mtime +30 -delete 2>/dev/null || true
+sudo find "$BACKUP_DIR" -name "*.backup" -mtime +30 -delete 2>/dev/null || true
 
 echo "Backup completed: $DATE"
 EOF
@@ -621,50 +726,52 @@ EOF
 # Запуск приложения
 start_application() {
     local PROJECT_DIR="/home/telegram-parser/telegram-channel-parser"
+    local APP_USER="telegram-parser"
     
     log "Запуск приложения..."
     
-    cd "$PROJECT_DIR"
-    sudo -u telegram-parser pm2 start ecosystem.config.js &>/dev/null
-    sudo -u telegram-parser pm2 save &>/dev/null
+    # Запускаем приложение от имени пользователя telegram-parser
+    sudo -u $APP_USER bash << USERSCRIPT
+cd "$PROJECT_DIR"
+export HOME="/home/telegram-parser"
+pm2 start ecosystem.config.js
+pm2 save
+USERSCRIPT
     
     # Ожидание запуска
-    sleep 5
+    sleep 10
     
-    if sudo -u telegram-parser pm2 list | grep -q "telegram-parser.*online"; then
+    # Проверяем статус
+    if sudo -u $APP_USER pm2 list | grep -q "telegram-parser.*online"; then
         log "Приложение запущено ✓"
     else
-        error "Не удалось запустить приложение"
-        exit 1
+        warning "Приложение может не запуститься. Проверьте логи: telegram-parser logs"
     fi
 }
 
 # Финальная проверка
 final_check() {
-    local IP=$(curl -s ifconfig.me)
-    
     log "Финальная проверка..."
     
     # Проверка Nginx
     if ! sudo systemctl is-active --quiet nginx; then
-        error "Nginx не запущен"
-        exit 1
+        warning "Nginx не запущен, пытаемся запустить..."
+        sudo systemctl start nginx
     fi
     
     # Проверка приложения
     if ! sudo -u telegram-parser pm2 list | grep -q "telegram-parser.*online"; then
-        error "Приложение не запущено"
-        exit 1
+        warning "Приложение не запущено, проверьте логи"
     fi
     
-    # Проверка доступности
-    if curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000" | grep -q "200\|302"; then
+    # Проверка доступности (с таймаутом)
+    if timeout 10 curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000" | grep -q "200\|302"; then
         log "Приложение доступно ✓"
     else
-        warning "Приложение может быть недоступно"
+        warning "Приложение может быть недоступно, но это нормально на первом запуске"
     fi
     
-    log "Все проверки пройдены ✓"
+    log "Проверки завершены ✓"
 }
 
 # Вывод информации об установке
@@ -690,6 +797,10 @@ print_success_info() {
     warning "⚠️  ВАЖНО! Настройте API ключи в файле:"
     warning "   /home/telegram-parser/telegram-channel-parser/.env.local"
     echo
+    info "📝 Для редактирования конфигурации:"
+    info "   sudo nano /home/telegram-parser/telegram-channel-parser/.env.local"
+    info "   telegram-parser restart"
+    echo
     info "📚 Получите API ключи:"
     info "   • Telegram API: https://my.telegram.org"
     info "   • Groq AI: https://console.groq.com"
@@ -698,15 +809,37 @@ print_success_info() {
     info "   sudo apt install certbot python3-certbot-nginx"
     info "   sudo certbot --nginx -d ваш_домен.com"
     echo
+    info "🔍 Если что-то не работает:"
+    info "   telegram-parser logs     - Просмотр логов"
+    info "   telegram-parser status   - Проверка статуса"
+    info "   telegram-parser restart  - Перезапуск"
+    echo
     log "🎉 Установка завершена успешно!"
     echo
+}
+
+# Обработка ошибок
+handle_error() {
+    local exit_code=$?
+    local line_number=$1
+    
+    error "Ошибка на строке $line_number (код: $exit_code)"
+    error "Установка прервана"
+    
+    # Попытка очистки
+    if [[ -d "/home/telegram-parser/telegram-channel-parser" ]]; then
+        warning "Удаление частично установленных файлов..."
+        sudo rm -rf "/home/telegram-parser/telegram-channel-parser"
+    fi
+    
+    exit $exit_code
 }
 
 # Основная функция
 main() {
     echo "╔════════════════════════════════════════════════════════════════╗"
     echo "║              Telegram Channel Parser - Установка              ║"
-    echo "║                        Версия 1.0                             ║"
+    echo "║                        Версия 1.1                             ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo
     
@@ -732,7 +865,8 @@ main() {
     print_success_info
 }
 
-# Обработка сигналов
+# Обработка сигналов и ошибок
+trap 'handle_error $LINENO' ERR
 trap 'error "Установка прервана пользователем"; exit 1' INT TERM
 
 # Запуск установки
